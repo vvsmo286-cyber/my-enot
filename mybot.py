@@ -3,29 +3,26 @@ from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
+from fractions import Fraction
 
 TOKEN = '8164851577:AAGMU9nAceVgaRCp-xxAtlJHApz5KwjoiEI'
-ADMIN_ID = "6032049080" 
+ADMIN_ID = "6032049080"
 
-# --- ФИКС RENDER ---
-async def handle(r): return web.Response(text="Enot 4.0: Shop Fixed")
+# --- СЕРВЕР RENDER ---
+async def handle(r): return web.Response(text="Enot Ultimate Active")
 async def start_web():
     app = web.Application(); app.router.add_get('/', handle)
     runner = web.AppRunner(app); await runner.setup()
     try: await web.TCPSite(runner, '0.0.0.0', 10000).start()
     except: pass
 
-user_data = {}
-TITLES = {
-    "редкие": ["Енот пляжный", "Абобус", "Крутыш"],
-    "легендарные": ["Енот Бармен", "Легомен"],
-    "ультралегендарные": ["Тюлень 2.0"]
-}
+# --- ДАННЫЕ ---
+user_data, mines_games, games_2048 = {}, {}, {}
+TITLES = {"редкие": ["Абобус", "Крутыш"], "ультралегендарные": ["Тюлень 2.0"]}
 JOBS = [
     {"name": "🧹 Дворник", "pay": 50, "goal": 70},
     {"name": "📦 Доставщик", "pay": 80, "goal": 140},
     {"name": "🪓 Лесоруб", "pay": 100, "goal": 500},
-    {"name": "💻 Программист", "pay": 110, "goal": 210},
     {"name": "💰 Бизнесмен", "pay": 160, "goal": 9999}
 ]
 
@@ -57,40 +54,65 @@ def get_main_menu(uid):
     b.button(text="🛠 Работа", callback_data="go_work")
     b.button(text="🎮 Игры", callback_data="open_games")
     b.button(text="🛒 Магазин", callback_data="open_shop")
-    b.button(text="📦 Кейс (100)", callback_data="open_case")
+    b.button(text="🧮 Калькулятор", callback_data="st_calc")
     if str(uid) == ADMIN_ID: b.button(text="💎 VIP СКЛАД", callback_data="admin_shop")
     return b.adjust(1, 2, 2, 1).as_markup()
+
+# --- САПЕР КЛАВА ---
+def get_m_kb(uid, end=False):
+    g = mines_games[uid]; b = InlineKeyboardBuilder()
+    for i in range(49):
+        t = "✅" if i in g['o'] else ("💣" if end and i in g['m'] else "⬜️")
+        b.button(text=t, callback_data=f"m_{i}")
+    b.button(text="🔙 Назад", callback_data="open_games")
+    return b.adjust(7).as_markup()
 
 async def main():
     load_data(); await start_web()
     bot = Bot(token=TOKEN); dp = Dispatcher()
     await bot.delete_webhook(drop_pending_updates=True)
 
-    @dp.message(lambda m: m.text and m.text.lower() in ["профиль", "енот", "/start", "меню", "игры"])
+    @dp.message(lambda m: m.text and m.text.lower() in ["/start", "меню", "енот", "игры"])
     async def cmd_start(m: types.Message):
         get_user(m.from_user.id, m.from_user.first_name); save_all()
-        await m.answer(f"🦝 **Енот на чиле 4.0**!\nМагазин и Усилители обновлены!", reply_markup=get_main_menu(m.from_user.id))
+        await m.answer(f"🦝 **Енот на чиле ULTIMATE** запущен!", reply_markup=get_main_menu(m.from_user.id))
 
     @dp.callback_query(F.data == "go_work")
     async def work(c: types.CallbackQuery):
         u = get_user(c.from_user.id); now = datetime.now()
-        
-        # Таймер (Компотик сбрасывает его)
         if u.get('last_work'):
             diff = now - datetime.strptime(u['last_work'], "%H:%M:%S")
             if diff < timedelta(seconds=30) and "Компотик" not in u['items']:
-                return await c.answer("Подожди 30 сек! 🍹", show_alert=True)
-        
-        if "Компотик" in u['items']: u['items'].remove("Компотик") # Расходник
-
+                return await c.answer("Подожди 30 сек!", show_alert=True)
+        if "Компотик" in u['items']: u['items'].remove("Компотик")
         job = JOBS[u['job_lvl']]
         bonus = (15 if "Мех. перчатки" in u['items'] else 0) + (40 if "Велосипед" in u['items'] else 0) + (150 if "Рюкзак" in u['items'] else 0)
-        multi = 2.0 if "Корона" in u['items'] else (1.4 if u['title'] == "Тюлень 2.0" else 1.0)
-        pay = int((job['pay'] + bonus) * multi)
-        
+        pay = int((job['pay'] + bonus) * (2.0 if "Корона" in u['items'] else 1.0))
         u['coins'] += pay; u['work_count'] += 1; u['last_work'] = now.strftime("%H:%M:%S")
-        if u['work_count'] >= job['goal'] and u['job_lvl'] < 4: u['job_lvl'] += 1; u['work_count'] = 0
+        if u['work_count'] >= job['goal'] and u['job_lvl'] < 3: u['job_lvl'] += 1; u['work_count'] = 0
         save_all(); await c.answer(f"+{pay}💰"); await c.message.edit_reply_markup(reply_markup=get_main_menu(c.from_user.id))
+
+    @dp.callback_query(F.data == "open_games")
+    async def games(c: types.CallbackQuery):
+        b = InlineKeyboardBuilder()
+        b.button(text="💣 Сапер", callback_data="st_mines")
+        b.button(text="🎰 Слоты", callback_data="st_slots")
+        b.button(text="🔙 Назад", callback_data="to_menu")
+        await c.message.edit_text("🎮 Игры:", reply_markup=b.adjust(2, 1).as_markup())
+
+    @dp.callback_query(F.data == "st_mines")
+    async def mine_st(c: types.CallbackQuery):
+        mines_games[c.from_user.id] = {'m': random.sample(range(49), 10), 'o': []}
+        await c.message.edit_text("💣 Сапер 7x7:", reply_markup=get_m_kb(c.from_user.id))
+
+    @dp.callback_query(F.data.startswith("m_"))
+    async def mine_pl(c: types.CallbackQuery):
+        u = c.from_user.id; idx = int(c.data.split("_")); g = mines_games[u]
+        if idx in g['m']: await c.message.edit_text("💥 БУМ!", reply_markup=get_m_kb(u, True))
+        else:
+            if idx not in g['o']: g['o'].append(idx); get_user(u)['coins'] += 5
+            await c.message.edit_reply_markup(reply_markup=get_m_kb(u))
+        await c.answer()
 
     @dp.callback_query(F.data == "open_shop")
     async def shop(c: types.CallbackQuery):
@@ -100,20 +122,16 @@ async def main():
         b.button(text="🧃 Компотик (130)", callback_data="buy_компотик")
         b.button(text="🎒 Рюкзак (6000)", callback_data="buy_рюкзак")
         b.button(text="🔙 Назад", callback_data="to_menu")
-        await c.message.edit_text("🛒 МАГАЗИН УСИЛИТЕЛЕЙ:", reply_markup=b.adjust(1).as_markup())
+        await c.message.edit_text("🛒 МАГАЗИН:", reply_markup=b.adjust(1).as_markup())
 
     @dp.callback_query(F.data.startswith("buy_"))
     async def buying(c: types.CallbackQuery):
-        u = get_user(c.from_user.id); item = c.data.split("_")[1]
+        u = get_user(c.from_user.id); item = c.data.split("_")
         p = {"перчатки": 500, "велосипед": 1350, "компотик": 130, "рюкзак": 6000, "тазик": 10000, "очки": 5000, "корона": 25000}
-        mapping = {"перчатки": "Мех. перчатки", "велосипед": "Велосипед", "компотик": "Компотик", "рюкзак": "Рюкзак", "тазик": "Золотой тазик", "очки": "Инженерные очки", "корона": "Корона"}
-        it_name = mapping[item]
-        
+        it_name = item.capitalize()
         if u['coins'] < p[item]: return await c.answer("Мало монет!", show_alert=True)
-        if it_name in u['items'] and item != "компотик": return await c.answer("Уже есть!", show_alert=True)
-        
         u['coins'] -= p[item]; u['items'].append(it_name); save_all()
-        await c.answer(f"Куплено: {it_name}!"); await c.message.edit_reply_markup(reply_markup=get_main_menu(c.from_user.id))
+        await c.answer("Куплено!"); await c.message.edit_reply_markup(reply_markup=get_main_menu(c.from_user.id))
 
     @dp.callback_query(F.data == "open_profile")
     async def profile(c: types.CallbackQuery):
@@ -127,9 +145,30 @@ async def main():
         b = InlineKeyboardBuilder().button(text="🧼 Тазик (10к)", callback_data="buy_тазик").button(text="👓 Очки (5к)", callback_data="buy_очки").button(text="👑 Корона (25к)", callback_data="buy_корона").button(text="🔙 Назад", callback_data="to_menu")
         await c.message.edit_text("💎 VIP СКЛАД:", reply_markup=b.adjust(1).as_markup())
 
+    @dp.callback_query(F.data == "st_calc")
+    async def calc(c: types.CallbackQuery): await c.answer("🔢 Пиши пример в чат (2+2 или 1/2+1/2)", show_alert=True)
+
+    @dp.message(F.text.regexp(r"^(\d+[\+\-\*\/]\d+)$"))
+    async def s_calc(m: types.Message):
+        try: await m.answer(f"🧩 Ответ: {eval(m.text)}")
+        except: pass
+
+    @dp.message(F.text.regexp(r"^(\d+\/\d+[\+\-\*\/]\d+\/\d+)$"))
+    async def f_calc(m: types.Message):
+        try:
+            t = m.text.replace(" ", ""); op = next(o for o in "+-*/" if o in t)
+            p = t.split(op); f1, f2 = Fraction(p), Fraction(p)
+            if op == "+": r = f1 + f2
+            elif op == "-": r = f1 - f2
+            elif op == "*": r = f1 * f2
+            elif op == "/": r = f1 / f2
+            await m.answer(f"🍰 Результат: {r}")
+        except: pass
+
     @dp.callback_query(F.data == "to_menu")
     async def back(c: types.CallbackQuery): await c.message.edit_text("🦝 Меню:", reply_markup=get_main_menu(c.from_user.id))
 
-    print("🚀 ЕНОТ 4.0 ЗАПУЩЕН!"); await dp.start_polling(bot)
+    print("🚀 ЕНОТ ULTIMATE ЗАПУЩЕН!"); await dp.start_polling(bot)
 
 if __name__ == "__main__": asyncio.run(main())
+
