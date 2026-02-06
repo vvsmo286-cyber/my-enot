@@ -5,10 +5,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 
 TOKEN = '8164851577:AAGMU9nAceVgaRCp-xxAtlJHApz5KwjoiEI'
-ADMIN_ID = "6032049080" 
+ADMIN_ID = "6032049080" # Твой ID
 
-# --- ФИКС ДЛЯ RENDER ---
-async def handle(r): return web.Response(text="Enot na Chile is Gaming...")
+# --- ФИКС RENDER (ВЕБ-СЕРВЕР) ---
+async def handle(r): return web.Response(text="Enot na Chile is Online!")
 async def start_web():
     app = web.Application(); app.router.add_get('/', handle)
     runner = web.AppRunner(app); await runner.setup()
@@ -17,7 +17,6 @@ async def start_web():
 # --- ДАННЫЕ ---
 user_data, mines_games, games_2048 = {}, {}, {}
 server_stats = {"total_earned": 0, "tax_pool": 0}
-
 TITLES = {
     "редкие": ["Енот пляжный", "Абобус", "Крутыш", "Зарядник"],
     "сверхредкие": ["Стив", "Мишка Фредди", "Игроман", "Школьник читер666"],
@@ -25,7 +24,6 @@ TITLES = {
     "легендарные": ["Енот Бармен", "Ручка Без башни", "Легомен", "Босс 67"],
     "ультралегендарные": ["Енот шлепа", "Тюлень", "Тюлень 2.0"]
 }
-
 JOBS = [
     {"name": "🧹 Дворник", "pay": 50, "goal": 70},
     {"name": "📦 Доставщик", "pay": 80, "goal": 140},
@@ -70,54 +68,35 @@ def get_main_menu(uid):
     if str(uid) == ADMIN_ID: b.button(text="💎 VIP СКЛАД", callback_data="admin_shop")
     b.adjust(1, 1, 2, 2, 1); return b.as_markup()
 
-# --- ЛОГИКА ---
+# --- ИГРЫ ЛОГИКА ---
+def get_m_kb(uid, end=False):
+    g = mines_games[uid]; b = InlineKeyboardBuilder()
+    for i in range(49):
+        t = "✅" if i in g['o'] else ("💣" if end and i in g['m'] else "⬜️")
+        b.button(text=t, callback_data=f"m_{i}")
+    b.button(text="🔙 Меню", callback_data="to_menu")
+    b.adjust(7); return b.as_markup()
+
+# --- ЗАПУСК ---
 async def main():
     load_data(); await start_web()
     bot = Bot(token=TOKEN); dp = Dispatcher()
     await bot.delete_webhook(drop_pending_updates=True)
 
-    @dp.message(F.text.lower().in_(["меню", "игры", "/start", "енот"]))
-    async def start(m: types.Message):
-        await m.answer(f"🦝 **Енот на чиле** приветствует тебя!", reply_markup=get_main_menu(m.from_user.id))
+    # ИСПРАВЛЕННЫЙ ФИЛЬТР (теперь ловит "игры")
+    @dp.message(lambda m: m.text and m.text.lower() in ["игры", "меню", "енот", "/start", "game", "игр"])
+    async def start_handler(m: types.Message):
+        await m.answer(f"🦝 **Енот на чиле** в здании! Выбирай, чем займемся:", reply_markup=get_main_menu(m.from_user.id))
 
-    # --- ИГРОВОЕ МЕНЮ ---
     @dp.callback_query(F.data == "open_games")
     async def games_menu(c: types.CallbackQuery):
         b = InlineKeyboardBuilder()
         b.button(text="💣 Сапер", callback_data="st_mines")
         b.button(text="🎰 Слоты", callback_data="st_slots")
         b.button(text="🎲 Кубики", callback_data="st_dice")
-        b.button(text="🔢 2048", callback_data="st_2048")
         b.button(text="🔙 Назад", callback_data="to_menu")
-        b.adjust(2, 2, 1); await c.message.edit_text("🎮 Выбери игру на чиле:", reply_markup=b.as_markup())
+        b.adjust(2, 1, 1); await c.message.edit_text("🎮 Во что поиграем?", reply_markup=b.as_markup())
 
-    # --- САПЕР ---
-    def get_m_kb(uid, end=False):
-        g = mines_games[uid]; b = InlineKeyboardBuilder()
-        for i in range(49):
-            t = "✅" if i in g['o'] else ("💣" if end and i in g['m'] else "⬜️")
-            b.button(text=t, callback_data=f"m_{i}")
-        b.button(text="🔙 Меню", callback_data="to_menu")
-        b.adjust(7); return b.as_markup()
-
-    @dp.callback_query(F.data == "st_mines")
-    async def mine_st(c: types.CallbackQuery):
-        mines_games[c.from_user.id] = {'m': random.sample(range(49), 10), 'o': []}
-        await c.message.edit_text("💣 Сапер 7x7 (5💰 за клетку * множитель):", reply_markup=get_m_kb(c.from_user.id))
-
-    @dp.callback_query(F.data.startswith("m_"))
-    async def mine_pl(c: types.CallbackQuery):
-        u = c.from_user.id; idx = int(c.data.split("_")[1]); g = mines_games[u]
-        if idx in g['m']: await c.message.edit_text("💥 БУМ!", reply_markup=get_m_kb(u, True))
-        else:
-            if idx not in g['o']: 
-                g['o'].append(idx); us = get_user(u)
-                multi = 1.4 if us['title'] == "Тюлень 2.0" else (2.0 if "Корона" in us['items'] else 1.0)
-                us['coins'] += int(5 * multi)
-            await c.message.edit_reply_markup(reply_markup=get_m_kb(u))
-        await c.answer()
-
-    # --- РАБОТА И ОСТАЛЬНОЕ ---
     @dp.callback_query(F.data == "go_work")
     async def work(c: types.CallbackQuery):
         u = get_user(c.from_user.id); now = datetime.now()
@@ -134,6 +113,17 @@ async def main():
         if u['work_count'] >= job['goal'] and u['job_lvl'] < 3: u['job_lvl'] += 1; u['work_count'] = 0
         save_all(); await c.answer(f"+{pay}💰"); await c.message.edit_reply_markup(reply_markup=get_main_menu(c.from_user.id))
 
+    @dp.callback_query(F.data == "server_stats")
+    async def s_stats(c: types.CallbackQuery):
+        msg = f"📊 СТАТИСТИКА:\n💰 Всего заработано: {server_stats['total_earned']}\n\n🏆 ТОП:\n"
+        sort = sorted(user_data.items(), key=lambda x: x['coins'], reverse=True)[:5]
+        for i, (uid, data) in enumerate(sort, 1): msg += f"{i}. {data['title']} — {int(data['coins'])}💰\n"
+        await c.answer(msg, show_alert=True)
+
+    @dp.callback_query(F.data == "to_menu")
+    async def to_m(c: types.CallbackQuery):
+        await c.answer(); await c.message.edit_text("🦝 Главное меню:", reply_markup=get_main_menu(c.from_user.id))
+
     @dp.callback_query(F.data == "open_shop")
     async def shop_menu(c: types.CallbackQuery):
         b = InlineKeyboardBuilder()
@@ -144,11 +134,48 @@ async def main():
         b.button(text="🔙 Назад", callback_data="to_menu")
         b.adjust(1); await c.message.edit_text("🛒 Магазин:", reply_markup=b.as_markup())
 
-    @dp.callback_query(F.data == "to_menu")
-    async def to_m(c: types.CallbackQuery):
-        await c.answer(); await c.message.edit_text("🦝 Главное меню:", reply_markup=get_main_menu(c.from_user.id))
+    @dp.callback_query(F.data.startswith("buy_"))
+    async def buying(c: types.CallbackQuery):
+        u = get_user(c.from_user.id); item = c.data.split("_")
+        prices = {"перчатки": 500, "велосипед": 1350, "компотик": 130, "рюкзак": 6000, "тазик": 10000, "очки": 5000, "корона": 25000}
+        name = item.capitalize()
+        if u['coins'] < prices[item]: return await c.answer("Мало монет!", show_alert=True)
+        u['coins'] -= prices[item]; u['items'].append(name); save_all()
+        await c.answer(f"Куплено: {name}!"); await c.message.edit_reply_markup(reply_markup=get_main_menu(c.from_user.id))
 
-    print("🚀 ЕНОТ НА ЧИЛЕ С ИГРАМИ ЗАПУЩЕН!"); await dp.start_polling(bot)
+    @dp.callback_query(F.data == "admin_shop")
+    async def a_shop(c: types.CallbackQuery):
+        if str(c.from_user.id) != ADMIN_ID: return
+        b = InlineKeyboardBuilder()
+        b.button(text="🧼 Золотой Тазик (10к)", callback_data="buy_тазик")
+        b.button(text="👓 Инж. Очки (5к)", callback_data="buy_очки")
+        b.button(text="👑 Корона (25к)", callback_data="buy_корона")
+        b.button(text="🔙 Назад", callback_data="to_menu")
+        b.adjust(1); await c.message.edit_text("💎 VIP СКЛАД:", reply_markup=b.as_markup())
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    @dp.callback_query(F.data == "open_case")
+    async def open_c(c: types.CallbackQuery):
+        u = get_user(c.from_user.id)
+        if u['coins'] < 100: return await c.answer("Мало монет!", show_alert=True)
+        u['coins'] -= 100; r = random.choices(list(TITLES.keys()), weights=)
+        u['title'] = random.choice(TITLES[r]); save_all()
+        await c.answer(f"📦 Твой статус: {u['title']}", show_alert=True)
+        await c.message.edit_reply_markup(reply_markup=get_main_menu(c.from_user.id))
+
+    @dp.callback_query(F.data == "st_mines")
+    async def mine_st(c: types.CallbackQuery):
+        mines_games[c.from_user.id] = {'m': random.sample(range(49), 10), 'o': []}
+        await c.message.edit_text("💣 Сапер 7x7:", reply_markup=get_m_kb(c.from_user.id))
+
+    @dp.callback_query(F.data.startswith("m_"))
+    async def mine_pl(c: types.CallbackQuery):
+        u = c.from_user.id; idx = int(c.data.split("_")); g = mines_games[u]
+        if idx in g['m']: await c.message.edit_text("💥 БУМ!", reply_markup=get_m_kb(u, True))
+        else:
+            if idx not in g['o']: g['o'].append(idx); get_user(u)['coins'] += 5
+            await c.message.edit_reply_markup(reply_markup=get_m_kb(u))
+        await c.answer()
+
+    print("🚀 ЕНОТ НА ЧИЛЕ (FIXED) ЗАПУЩЕН!"); await dp.start_polling(bot)
+
+if __name__ == "__main__": asyncio.run(main())
